@@ -1,0 +1,50 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  
+permissions:
+  contents: write
+  
+jobs:
+  build:
+    name: "Build"
+    runs-on: ubuntu-latest
+    steps:
+    - name: Clone repository
+      uses: actions/checkout@v6
+      with:
+        submodules: recursive
+        fetch-depth: 1
+    - name: Validation
+      uses: gradle/actions/wrapper-validation@v6
+      
+    - name: Java setup
+      uses: actions/setup-java@v5
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    - name: Gradle Permission
+      run: chmod 755 ./*
+    - name: Restore cache
+      uses: actions/cache@v5
+      with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+    - name: Build
+      run: ./gradlew assembleDebug
+
+        
+    - name: Easy-Browser-2.7.0-aar
+      uses: actions/upload-artifact@v7
+      with:
+        name: Easy-Browser-2.7.0-aar
+        path: ./lib/build/outputs/*
+
+    
