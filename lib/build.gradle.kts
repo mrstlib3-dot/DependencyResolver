@@ -1,37 +1,37 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    id("com.android.library") version "8.7.2"
-    id("org.jetbrains.kotlin.android") version "2.2.0"
+    id("org.jetbrains.kotlin.jvm") version "2.2.0"
+    id("java-library")
     id("maven-publish")
+    application
+    id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 repositories {
     mavenCentral()
-    google()
     gradlePluginPortal()
 }
 
-android {
-    namespace = "org.cosmic.ide.dependency.resolver"
-    compileSdk = 35
+kotlin.compilerOptions {
+    jvmTarget.set(JvmTarget.JVM_17)
+}
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
 
-    kotlinOptions {
-        jvmTarget = "17"
+tasks.shadowJar {
+    archiveClassifier.set("")
+    mergeServiceFiles()
+    manifest {
+        attributes["Main-Class"] = "org.cosmic.ide.dependency.resolver.MainKt"
     }
+}
 
-    // Disable building unnecessary variants
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-            withJavadocJar()
-        }
-    }
+tasks.jar {
+    enabled = false
 }
 
 publishing {
@@ -40,17 +40,13 @@ publishing {
             groupId = "org.cosmic.ide"
             artifactId = "dependency-resolver"
             version = "1.0.2"
-            
-            // Publish the AAR
-            afterEvaluate {
-                artifact(tasks.getByName("bundleReleaseAar"))
-            }
-            
-            // Include sources and javadoc if desired
-            // artifact(tasks.getByName("sourcesJar"))
-            // artifact(tasks.getByName("javadocJar"))
+            artifact(tasks.shadowJar)
         }
     }
+}
+
+application {
+    mainClass.set("org.cosmic.ide.dependency.resolver.MainKt")
 }
 
 dependencies {
