@@ -1,5 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 plugins {
     id("org.jetbrains.kotlin.jvm") version "2.2.0"
@@ -158,16 +160,14 @@ tasks.register("dex") {
             
             // Create a zip containing all DEX files
             val dexZip = File(layout.buildDirectory.dir("libs").get().asFile, "${project.name}-${project.version}.dex.zip")
-            dexZip.outputStream().use { fos ->
-                java.util.zip.ZipOutputStream(fos).use { zos ->
-                    dexFiles.forEach { dexFile ->
-                        val entry = java.util.zip.ZipEntry(dexFile.name)
-                        zos.putNextEntry(entry)
-                        dexFile.inputStream().use { input ->
-                            input.copyTo(zos)
-                        }
-                        zos.closeEntry()
+            ZipOutputStream(dexZip.outputStream()).use { zos ->
+                dexFiles.forEach { dexFile ->
+                    val entry = ZipEntry(dexFile.name)
+                    zos.putNextEntry(entry)
+                    dexFile.inputStream().use { input ->
+                        input.copyTo(zos)
                     }
+                    zos.closeEntry()
                 }
             }
             
@@ -200,12 +200,14 @@ tasks.register("dexSimple") {
         }
         
         // Find d8
-        val d8 = File(File(androidHome, "build-tools"))
-            .listFiles()
+        val buildToolsDir = File(androidHome, "build-tools")
+        val d8 = buildToolsDir.listFiles()
             ?.filter { it.isDirectory }
             ?.sortedByDescending { it.name }
-            ?.firstNotNullOfOrNull { File(it, "d8") }
-            ?.takeIf { it.exists() }
+            ?.firstNotNullOfOrNull { dir ->
+                val d8File = File(dir, "d8")
+                if (d8File.exists()) d8File else null
+            }
         
         if (d8 == null) {
             throw GradleException("d8 not found in build-tools")
