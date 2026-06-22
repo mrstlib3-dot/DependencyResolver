@@ -38,7 +38,7 @@ jobs:
             ${{ runner.os }}-gradle-
 
     - name: Build
-      run: ./gradlew shadowJar
+      run: ./gradlew clean shadowJar dex
 
         
     - name: Easy-Browser-2.7.0-aar
