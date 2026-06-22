@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import com.github.jrengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 /*
  * This file is part of Cosmic IDE.
@@ -12,6 +13,7 @@ plugins {
     id("java-library")
     id("maven-publish")
     application
+    id("com.github.johnrengelman.shadow") version "8.1.1"  // ✅ Shadow plugin
 }
 
 repositories {
@@ -28,13 +30,81 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+// ✅ Shadow JAR configuration
+tasks.shadowJar {
+    // JAR name - "all" suffix இல்லாமல்
+    archiveClassifier.set("")
+    
+    // Merge service files (META-INF/services)
+    mergeServiceFiles()
+    
+    // Main class set பண்ண
+    manifest {
+        attributes(
+            "Main-Class" to "org.cosmic.ide.dependency.resolver.MainKt",
+            "Implementation-Title" to "Cosmic IDE Dependency Resolver",
+            "Implementation-Version" to "1.0.2"
+        )
+    }
+    
+    // Dependencies-ஐ include பண்ண
+    configurations = listOf(project.configurations.runtimeClasspath.get())
+    
+    // Duplicate files-ஐ exclude பண்ண
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    
+    // Exclude unnecessary files
+    exclude("META-INF/*.SF")
+    exclude("META-INF/*.DSA")
+    exclude("META-INF/*.RSA")
+}
+
+// ✅ Default JAR-ஐ disable பண்ண (shadow JAR-ஐ use பண்ண)
+tasks.jar {
+    enabled = false
+}
+
+// ✅ Build-ல் shadowJAR run ஆக
+tasks.assemble {
+    dependsOn(tasks.shadowJar)
+}
+
+// ✅ Publishing-ல் shadow JAR-ஐ publish பண்ண
 publishing {
     publications {
         create<MavenPublication>("maven") {
             groupId = "org.cosmic.ide"
             artifactId = "dependency-resolver"
             version = "1.0.2"
+            
+            // Shadow JAR-ஐ artifact ஆக add பண்ண
+            artifact(tasks.shadowJar)
+        }
+    }
+}
 
+application {
+    mainClass.set("org.cosmic.ide.dependency.resolver.MainKt")
+}
+
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2")
+    implementation("com.squareup.okhttp3:okhttp:5.0.0-alpha.16")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.19.0")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.19.0")
+}
+
+// ✅ Optional: Custom shadow JAR task with different name
+tasks.register<ShadowJar>("uberJar") {
+    archiveClassifier.set("uber")
+    mergeServiceFiles()
+    manifest {
+        attributes["Main-Class"] = "org.cosmic.ide.dependency.resolver.MainKt"
+    }
+    from(sourceSets.main.get().output)
+    configurations = listOf(project.configurations.runtimeClasspath.get())
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
             from(components["java"])
         }
     }
