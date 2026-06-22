@@ -34,7 +34,7 @@ tasks.jar {
     enabled = false
 }
 
-// DEX generation task with correct d8/dx commands
+// DEX generation task
 tasks.register("dex") {
     dependsOn("shadowJar")
     group = "build"
@@ -42,8 +42,9 @@ tasks.register("dex") {
     
     doLast {
         val inputJar = tasks.shadowJar.get().archiveFile.get().asFile
-        val outputDir = layout.buildDirectory.dir("libs").get().asFile
-        val outputDex = File(outputDir, "${project.name}-${project.version}.dex")
+        val outputDir = layout.buildDirectory.dir("dex").get().asFile
+        val dexOutputDir = File(outputDir, "classes")
+        val outputDex = File(layout.buildDirectory.dir("libs").get().asFile, "${project.name}-${project.version}.dex")
         
         println("Input JAR: ${inputJar.absolutePath}")
         println("Input JAR exists: ${inputJar.exists()}")
@@ -53,7 +54,9 @@ tasks.register("dex") {
             throw GradleException("Input JAR not found: ${inputJar.absolutePath}")
         }
         
-        // Ensure output directory exists
+        // Clean and create output directories
+        dexOutputDir.deleteRecursively()
+        dexOutputDir.mkdirs()
         outputDir.mkdirs()
         
         // Get Android SDK path
@@ -78,44 +81,42 @@ tasks.register("dex") {
         }
         println("Using build-tools: ${latestBuildTools.first}")
         
-        // Find d8 or dx
+        // Find d8
         val toolDir = latestBuildTools.second
         val d8Path = File(toolDir, "d8")
-        val dxPath = File(toolDir, "dx")
         
-        val (dexTool, commandArgs) = when {
-            d8Path.exists() -> {
-                println("Using d8: ${d8Path.absolutePath}")
-                // d8 uses different syntax: d8 --lib ... --output ... input.jar
-                Pair(
-                    d8Path.absolutePath,
-                    listOf(
-                        "--lib", "${androidHome}/platforms/android-34/android.jar",
-                        "--output", outputDex.absolutePath,
-                        inputJar.absolutePath
-                    )
-                )
-            }
-            dxPath.exists() -> {
-                println("Using dx: ${dxPath.absolutePath}")
-                // dx uses --dex --output
-                Pair(
-                    dxPath.absolutePath,
-                    listOf(
-                        "--dex",
-                        "--output=${outputDex.absolutePath}",
-                        inputJar.absolutePath
-                    )
-                )
-            }
-            else -> throw GradleException("Neither d8 nor dx found in ${toolDir.absolutePath}")
+        if (!d8Path.exists()) {
+            throw GradleException("d8 not found in ${toolDir.absolutePath}")
         }
         
-        // Run dex command
-        println("Generating DEX file: ${outputDex.absolutePath}")
-        println("Command: $dexTool ${commandArgs.joinToString(" ")}")
+        println("Using d8: ${d8Path.absolutePath}")
         
-        val process = ProcessBuilder(listOf(dexTool) + commandArgs)
+        // Find android.jar
+        val platformDir = File("${androidHome}/platforms")
+        val platforms = platformDir.listFiles()?.filter { it.isDirectory }?.sortedByDescending { it.name } ?: emptyList()
+        val androidJar = platforms.firstOrNull { File(it, "android.jar").exists() }?.let { File(it, "android.jar") }
+        
+        if (androidJar == null) {
+            println("Warning: android.jar not found, using default")
+        } else {
+            println("Using android.jar: ${androidJar.absolutePath}")
+        }
+        
+        // Build d8 command - output to directory
+        val command = mutableListOf(
+            d8Path.absolutePath,
+            "--output", dexOutputDir.absolutePath,
+            inputJar.absolutePath
+        )
+        
+        if (androidJar != null && androidJar.exists()) {
+            command.add(1, "--lib")
+            command.add(2, androidJar.absolutePath)
+        }
+        
+        println("Command: ${command.joinToString(" ")}")
+        
+        val process = ProcessBuilder(command)
             .redirectErrorStream(true)
             .directory(outputDir)
             .start()
@@ -135,86 +136,114 @@ tasks.register("dex") {
             throw GradleException("DEX generation failed with exit code $exitCode")
         }
         
-        // Verify output
-        if (!outputDex.exists()) {
-            throw GradleException("DEX file was not created: ${outputDex.absolutePath}")
+        // Check if DEX files were created
+        val dexFiles = dexOutputDir.listFiles()?.filter { it.extension == "dex" } ?: emptyList()
+        
+        if (dexFiles.isEmpty()) {
+            throw GradleException("No DEX files were created in ${dexOutputDir.absolutePath}")
         }
         
-        println("✅ DEX file created successfully: ${outputDex.absolutePath}")
-        println("DEX file size: ${outputDex.length()} bytes")
+        println("Found ${dexFiles.size} DEX file(s):")
+        dexFiles.forEach { println("  - ${it.name} (${it.length()} bytes)") }
+        
+        // If multiple DEX files (multi-dex), combine them or use the first one
+        if (dexFiles.size == 1) {
+            // Single DEX file
+            dexFiles.first().copyTo(outputDex, overwrite = true)
+            println("✅ DEX file created: ${outputDex.absolutePath}")
+            println("DEX file size: ${outputDex.length()} bytes")
+        } else {
+            // Multi-dex: zip them or copy all
+            println("Multi-dex detected. Creating DEX archive...")
+            
+            // Create a zip containing all DEX files
+            val dexZip = File(layout.buildDirectory.dir("libs").get().asFile, "${project.name}-${project.version}.dex.zip")
+            dexZip.outputStream().use { fos ->
+                java.util.zip.ZipOutputStream(fos).use { zos ->
+                    dexFiles.forEach { dexFile ->
+                        val entry = java.util.zip.ZipEntry(dexFile.name)
+                        zos.putNextEntry(entry)
+                        dexFile.inputStream().use { input ->
+                            input.copyTo(zos)
+                        }
+                        zos.closeEntry()
+                    }
+                }
+            }
+            
+            // Also copy the first DEX as the main one
+            dexFiles.first().copyTo(outputDex, overwrite = true)
+            println("✅ Multi-DEX archive created: ${dexZip.absolutePath}")
+            println("✅ Primary DEX file: ${outputDex.absolutePath}")
+        }
+        
+        // Clean up temporary directory
+        dexOutputDir.deleteRecursively()
     }
 }
 
-// Alternative using Android Gradle plugin if available
+// Simple task using directory output
 tasks.register("dexSimple") {
     dependsOn("shadowJar")
     group = "build"
     
     doLast {
         val inputJar = tasks.shadowJar.get().archiveFile.get().asFile
-        val outputDir = layout.buildDirectory.dir("libs").get().asFile
-        val outputDex = File(outputDir, "${project.name}-${project.version}.dex")
+        val dexDir = layout.buildDirectory.dir("dex_temp").get().asFile
+        val outputDex = File(layout.buildDirectory.dir("libs").get().asFile, "${project.name}-${project.version}.dex")
         
-        outputDir.mkdirs()
+        dexDir.mkdirs()
         
-        // Try using d8 directly
         val androidHome = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
         if (androidHome == null) {
             throw GradleException("ANDROID_HOME not set")
         }
         
-        // Try multiple build-tools versions
-        val buildToolsDirs = File(androidHome, "build-tools").listFiles()
+        // Find d8
+        val d8 = File(File(androidHome, "build-tools"))
+            .listFiles()
             ?.filter { it.isDirectory }
             ?.sortedByDescending { it.name }
-            ?: emptyList()
+            ?.firstNotNullOfOrNull { File(it, "d8") }
+            ?.takeIf { it.exists() }
         
-        var success = false
-        for (buildTools in buildToolsDirs) {
-            val d8 = File(buildTools, "d8")
-            if (d8.exists()) {
-                try {
-                    println("Trying d8 from ${buildTools.name}")
-                    
-                    val platformJar = File("${androidHome}/platforms/android-34/android.jar")
-                    if (!platformJar.exists()) {
-                        println("Warning: android.jar not found at ${platformJar.absolutePath}")
-                    }
-                    
-                    val command = mutableListOf(
-                        d8.absolutePath,
-                        "--output", outputDex.absolutePath,
-                        inputJar.absolutePath
-                    )
-                    
-                    if (platformJar.exists()) {
-                        command.add(1, "--lib")
-                        command.add(2, platformJar.absolutePath)
-                    }
-                    
-                    val process = ProcessBuilder(command)
-                        .redirectErrorStream(true)
-                        .start()
-                    
-                    val output = process.inputStream.bufferedReader().readText()
-                    val exitCode = process.waitFor()
-                    
-                    if (exitCode == 0 && outputDex.exists()) {
-                        println("✅ DEX created with d8 (${buildTools.name})")
-                        success = true
-                        break
-                    } else {
-                        println("d8 failed: exitCode=$exitCode, output=$output")
-                    }
-                } catch (e: Exception) {
-                    println("d8 error: ${e.message}")
-                }
-            }
+        if (d8 == null) {
+            throw GradleException("d8 not found in build-tools")
         }
         
-        if (!success) {
-            throw GradleException("Failed to create DEX file using any d8 version")
+        println("Using d8: ${d8.absolutePath}")
+        
+        // Run d8 with directory output
+        val command = listOf(
+            d8.absolutePath,
+            "--output", dexDir.absolutePath,
+            inputJar.absolutePath
+        )
+        
+        val process = ProcessBuilder(command)
+            .redirectErrorStream(true)
+            .start()
+        
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        
+        if (exitCode != 0) {
+            throw GradleException("d8 failed: $output")
         }
+        
+        // Find DEX files
+        val dexFiles = dexDir.listFiles()?.filter { it.extension == "dex" } ?: emptyList()
+        if (dexFiles.isEmpty()) {
+            throw GradleException("No DEX files generated")
+        }
+        
+        // Copy first DEX
+        dexFiles.first().copyTo(outputDex, overwrite = true)
+        println("✅ DEX created: ${outputDex.absolutePath}")
+        println("Size: ${outputDex.length()} bytes")
+        
+        // Cleanup
+        dexDir.deleteRecursively()
     }
 }
 
@@ -232,25 +261,24 @@ tasks.register("checkAndroidEnv") {
             println("Build-tools exists: ${buildToolsDir.exists()}")
             
             if (buildToolsDir.exists()) {
-                val versions = buildToolsDir.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
-                println("Available versions: $versions")
-                
-                versions.sortedDescending().forEach { version ->
-                    val d8 = File(File(buildToolsDir, version), "d8")
-                    val dx = File(File(buildToolsDir, version), "dx")
-                    println("  $version - d8: ${d8.exists()}, dx: ${dx.exists()}")
-                }
+                buildToolsDir.listFiles()
+                    ?.filter { it.isDirectory }
+                    ?.sortedByDescending { it.name }
+                    ?.forEach { version ->
+                        val d8 = File(version, "d8")
+                        println("  ${version.name} - d8: ${d8.exists()}")
+                    }
             }
             
-            // Check if android.jar exists
-            val platformsDir = File(androidHome, "platforms")
-            if (platformsDir.exists()) {
-                val platforms = platformsDir.listFiles()?.filter { it.isDirectory }?.map { it.name } ?: emptyList()
-                println("Available platforms: $platforms")
-                platforms.forEach { platform ->
-                    val androidJar = File(File(platformsDir, platform), "android.jar")
-                    println("  $platform - android.jar: ${androidJar.exists()}")
-                }
+            val platformDir = File(androidHome, "platforms")
+            if (platformDir.exists()) {
+                platformDir.listFiles()
+                    ?.filter { it.isDirectory }
+                    ?.sortedByDescending { it.name }
+                    ?.forEach { platform ->
+                        val androidJar = File(platform, "android.jar")
+                        println("  ${platform.name} - android.jar: ${androidJar.exists()}")
+                    }
             }
         }
     }
