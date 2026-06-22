@@ -38,7 +38,7 @@ jobs:
             ${{ runner.os }}-gradle-
 
     - name: Build
-      run: ./gradlew assembleDebug
+      run: ./gradlew build
 
         
     - name: Easy-Browser-2.7.0-aar
