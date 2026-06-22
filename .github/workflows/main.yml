@@ -45,6 +45,6 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: Easy-Browser-2.7.0-aar
-        path: ./lib/build/outputs/*
+        path: ./lib/*
 
     
