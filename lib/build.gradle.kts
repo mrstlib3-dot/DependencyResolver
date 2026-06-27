@@ -15,10 +15,26 @@ repositories {
     gradlePluginPortal()
 }
 
-kotlin.compilerOptions {
-    jvmTarget.set(JvmTarget.JVM_17)
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+    kotlinOptions {
+        jvmTarget = "1.8"
+        apiVersion = "1.8"
+        languageVersion = "1.8"
+    }
 }
 
+// Force Java compile to use Java 8
+tasks.withType<JavaCompile> {
+    sourceCompatibility = "1.8"
+    targetCompatibility = "1.8"
+    options.release.set(8)  // Force Java 8
+}
+
+// Also set toolchain
+kotlin {
+    jvmToolchain(8)
+}
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
