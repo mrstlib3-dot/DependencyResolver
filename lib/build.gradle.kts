@@ -19,13 +19,6 @@ kotlin.compilerOptions {
     jvmTarget.set(JvmTarget.JVM_17)
 }
 
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-    }
-    
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -38,6 +31,11 @@ tasks.shadowJar {
     manifest {
         attributes["Main-Class"] = "org.cosmic.ide.dependency.resolver.MainKt"
     }
+
+    exclude("META-INF/versions/**")
+    exclude("module-info.class")
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.jar {
