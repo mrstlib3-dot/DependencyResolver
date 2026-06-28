@@ -52,7 +52,7 @@ suspend fun getArtifact(groupId: String, artifactId: String, version: String): A
  * Finds the host repository of the artifact and initialises it.
  * Returns null if no repository hosts this artifact
  */
-suspend fun initHost(artifact: Artifact): Artifact? {
+ fun initHost(artifact: Artifact): Artifact? {
     if (artifact.repository != null) {
         return artifact // Already initialized or repository was set externally
     }
