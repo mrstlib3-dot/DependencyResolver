@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.ConcurrentLinkedQueue
 
 
-val repositories = ConcurrentLinkedQueue<Repository>().apply {
+public val repositories = ConcurrentLinkedQueue<Repository>().apply {
     addAll(listOf(MavenCentral(), GoogleMaven(), Jitpack(), SonatypeSnapshots()))
 }
 var eventReciever = EventReciever()
@@ -39,7 +39,7 @@ val xmlDeserializer: ObjectMapper = XmlMapper(JacksonXmlModule().apply {
 }).registerKotlinModule().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
     .configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true)
 
-fun getArtifact(groupId: String, artifactId: String, version: String): Artifact? {
+suspend fun getArtifact(groupId: String, artifactId: String, version: String): Artifact? {
     val artifact = initHost(Artifact(groupId, artifactId, version)) ?: return null
 
     val pom = artifact.getPOM()!!
@@ -52,7 +52,7 @@ fun getArtifact(groupId: String, artifactId: String, version: String): Artifact?
  * Finds the host repository of the artifact and initialises it.
  * Returns null if no repository hosts this artifact
  */
-fun initHost(artifact: Artifact): Artifact? {
+suspend fun initHost(artifact: Artifact): Artifact? {
     if (artifact.repository != null) {
         return artifact // Already initialized or repository was set externally
     }
