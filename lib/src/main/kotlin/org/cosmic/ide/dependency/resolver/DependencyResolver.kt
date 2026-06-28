@@ -1,6 +1,5 @@
-package mod.pranav.dependency.resolver
+package org.cosmic.ide.dependency.resolver
 
-import android.os.Environment
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.runBlocking
@@ -10,7 +9,6 @@ import org.cosmic.ide.dependency.resolver.api.Repository
 import org.cosmic.ide.dependency.resolver.eventReciever
 import org.cosmic.ide.dependency.resolver.getArtifact
 import org.cosmic.ide.dependency.resolver.repositories
-import pro.sketchware.utility.FileUtil
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -43,11 +41,11 @@ class DependencyResolver(
     }
 
     private val downloadPath: String =
-        FileUtil.getExternalStorageDir() + "/.sketchware/libs/local_libs"
+        System.getProperty("user.home") + "/.dependency-resolver/libs/local_libs"
 
     private val repositoriesJson = Paths.get(
-        Environment.getExternalStorageDirectory().absolutePath,
-        ".sketchware",
+        System.getProperty("user.home"),
+        ".dependency-resolver",
         "libs",
         "repositories.json"
     )
@@ -216,11 +214,11 @@ class DependencyResolver(
 
     // Public methods for external access
     fun getLibraryJars(): List<Path> {
-        // Hardcoded paths - no BuiltInLibraries dependency
-        val externalStorage = Environment.getExternalStorageDirectory().absolutePath
+        // Pure Java/Kotlin paths - no Android dependencies
+        val userHome = System.getProperty("user.home")
         return listOf(
-            Paths.get(externalStorage, ".sketchware", "compile", "core-lambda-stubs.jar"),
-            Paths.get(externalStorage, ".sketchware", "compile", "android.jar")
+            Paths.get(userHome, ".dependency-resolver", "compile", "core-lambda-stubs.jar"),
+            Paths.get(userHome, ".dependency-resolver", "compile", "android.jar")
         )
     }
 
