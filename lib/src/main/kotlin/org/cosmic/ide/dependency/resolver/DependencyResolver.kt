@@ -2,9 +2,8 @@ package mod.pranav.dependency.resolver
 
 import android.os.Environment
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.runBlocking
-import mod.hey.studios.util.Helper
-import mod.jbk.build.BuiltInLibraries
 import org.cosmic.ide.dependency.resolver.api.Artifact
 import org.cosmic.ide.dependency.resolver.api.EventReciever
 import org.cosmic.ide.dependency.resolver.api.Repository
@@ -39,6 +38,8 @@ class DependencyResolver(
           |    {"url": "https://repo.maven.apache.org/maven2", "name": "Apache Maven"}
           |]
         """.trimMargin()
+        
+        private val TYPE_MAP_LIST = object : TypeToken<List<Map<String, String>>>() {}.type
     }
 
     private val downloadPath: String =
@@ -56,12 +57,14 @@ class DependencyResolver(
             Files.createDirectories(repositoriesJson.parent)
             repositoriesJson.writeText(DEFAULT_REPOS)
         }
-        Gson().fromJson(repositoriesJson.readText(), Helper.TYPE_MAP_LIST).forEach {
-            val url: String? = it["url"] as String?
+        val gson = Gson()
+        val reposList: List<Map<String, String>> = gson.fromJson(repositoriesJson.readText(), TYPE_MAP_LIST)
+        reposList.forEach { repoMap ->
+            val url: String? = repoMap["url"]
             if (url != null) {
                 repositories.add(object : Repository {
                     override fun getName(): String {
-                        return it["name"] as String
+                        return repoMap["name"] ?: "Unknown"
                     }
 
                     override fun getURL(): String {
@@ -213,23 +216,17 @@ class DependencyResolver(
 
     // Public methods for external access
     fun getLibraryJars(): List<Path> {
+        // Hardcoded paths - no BuiltInLibraries dependency
+        val externalStorage = Environment.getExternalStorageDirectory().absolutePath
         return listOf(
-            BuiltInLibraries.EXTRACTED_COMPILE_ASSETS_PATH.toPath()
-                .resolve("core-lambda-stubs.jar"),
-            Paths.get(
-                BuiltInLibraries.EXTRACTED_COMPILE_ASSETS_PATH.resolve("android.jar").absolutePath
-            )
+            Paths.get(externalStorage, ".sketchware", "compile", "core-lambda-stubs.jar"),
+            Paths.get(externalStorage, ".sketchware", "compile", "android.jar")
         )
     }
 
     fun getDependencyClasspath(): MutableList<Path> {
         val dependencyClasspath = mutableListOf<Path>()
-        val classpath = ""
-        classpath.split(":").forEach {
-            if (it.isNotEmpty()) {
-                dependencyClasspath.add(Paths.get(it))
-            }
-        }
+        // Empty classpath - external class can add
         return dependencyClasspath
     }
 
