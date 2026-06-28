@@ -31,10 +31,10 @@ import java.util.concurrent.ConcurrentLinkedQueue
 public val repositories = ConcurrentLinkedQueue<Repository>().apply {
     addAll(listOf(MavenCentral(), GoogleMaven(), Jitpack(), SonatypeSnapshots()))
 }
-var eventReciever = EventReciever()
-val okHttpClient = okhttp3.OkHttpClient()
+public var eventReciever = EventReciever()
+public val okHttpClient = okhttp3.OkHttpClient()
 
-val xmlDeserializer: ObjectMapper = XmlMapper(JacksonXmlModule().apply {
+public val xmlDeserializer: ObjectMapper = XmlMapper(JacksonXmlModule().apply {
     setDefaultUseWrapper(false)
 }).registerKotlinModule().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
     .configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true)
@@ -67,7 +67,7 @@ public fun getArtifact(groupId: String, artifactId: String, version: String): Ar
     return null
 }
 
-suspend fun ProjectObjectModel.resolveDependencies(
+public suspend fun ProjectObjectModel.resolveDependencies(
     resolved: ConcurrentHashMap<Pair<String, String>, Pair<Artifact, ConcurrentLinkedDeque<Artifact>>>,
     managedDependencies: ConcurrentLinkedDeque<Artifact>
 ): ConcurrentLinkedDeque<Artifact> {
@@ -146,11 +146,11 @@ suspend fun ProjectObjectModel.resolveDependencies(
     return deps
 }
 
-private fun needsVersionFix(version: String): Boolean {
+public fun needsVersionFix(version: String): Boolean {
     return version.isEmpty() || version == "+" || version.startsWith("[") || version.startsWith("\${'$'}{")
 }
 
-private fun fixVersion(
+public fun fixVersion(
     artifact: Artifact,
     pom: ProjectObjectModel, // This is the POM of the 'artifact' whose version we are fixing
     resolved: ConcurrentHashMap<Pair<String, String>, Pair<Artifact, ConcurrentLinkedDeque<Artifact>>> = ConcurrentHashMap()
@@ -233,7 +233,7 @@ private fun fixVersion(
  * @param version The version range to get the latest version from.
  * @return The latest version of the artifact.
  */
-fun getLatestRangeVersion(
+public fun getLatestRangeVersion(
     artifact: Artifact,
     versionRange: String, // Renamed for clarity
     resolved: ConcurrentHashMap<Pair<String, String>, Pair<Artifact, ConcurrentLinkedDeque<Artifact>>> = ConcurrentHashMap()
@@ -320,7 +320,7 @@ fun getLatestRangeVersion(
         ?: versionRange // Last resort original range string
 }
 
-fun getNewerVersion(existing: String, new: String): String {
+public fun getNewerVersion(existing: String, new: String): String {
     // This comparison needs to be robust for Maven versioning (e.g., 1.0, 1.0.0-alpha, 1.0.0-beta, 1.0.0-SNAPSHOT)
     // A simple string comparison is often NOT sufficient.
     // For now, placeholder:
@@ -357,7 +357,7 @@ fun getNewerVersion(existing: String, new: String): String {
  *
  * @param action The action to run on each element.
  */
-suspend fun <T> Iterable<T>.parallelForEach(action: suspend (T) -> Unit) = coroutineScope {
+public suspend fun <T> Iterable<T>.parallelForEach(action: suspend (T) -> Unit) = coroutineScope {
     map { element ->
         async { action(element) }
     }.awaitAll()
