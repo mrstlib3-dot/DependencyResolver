@@ -18,7 +18,7 @@ import kotlin.time.ExperimentalTime
 import java.util.concurrent.ConcurrentLinkedQueue
 
 // Global repositories list
-val repositories = ConcurrentLinkedQueue<Repository>().apply {
+public val repositories = ConcurrentLinkedQueue<Repository>().apply {
     addAll(listOf(MavenCentral(), GoogleMaven(), Jitpack(), SonatypeSnapshots()))
 }
 
