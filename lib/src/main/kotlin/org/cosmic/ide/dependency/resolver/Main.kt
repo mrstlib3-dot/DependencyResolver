@@ -33,27 +33,23 @@ import kotlin.time.ExperimentalTime
 @OptIn(ExperimentalTime::class)
 suspend fun main() {
     val artifact = Artifact("com.github.PranavPurwar", "filepicker", "e6ed776a13")
-    println(Jitpack().checkExists(artifact!!))
+    println(Jitpack().checkExists(artifact))
     val dir = File("test")
     dir.deleteRecursively()
     dir.mkdir()
-        println("Starting...")
+    println("Starting...")
     val time = measureTimeMillis {
-        artifact?.resolveDependencyTree()
-        artifact?.showDependencyTree()
+        artifact.resolveDependencyTree()
+        artifact.showDependencyTree()
     }
-    artifact?.downloadArtifact(dir)
+    artifact.downloadArtifact(dir)
     println("Time taken: $time ms")
 }
-
-
-
-
 
 public val repositories = ConcurrentLinkedQueue<Repository>().apply {
     addAll(listOf(MavenCentral(), GoogleMaven(), Jitpack(), SonatypeSnapshots()))
 }
-var eventReciever = EventReciever()
+var eventReceiver = EventReciever()
 val okHttpClient = okhttp3.OkHttpClient()
 
 val xmlDeserializer: ObjectMapper = XmlMapper(JacksonXmlModule().apply {
@@ -61,7 +57,7 @@ val xmlDeserializer: ObjectMapper = XmlMapper(JacksonXmlModule().apply {
 }).registerKotlinModule().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
     .configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true)
 
-fun getArtifact(groupId: String, artifactId: String, version: String): Artifact? {
+suspend fun getArtifact(groupId: String, artifactId: String, version: String): Artifact? {
     val artifact = initHost(Artifact(groupId, artifactId, version)) ?: return null
 
     val pom = artifact.getPOM()!!
@@ -74,7 +70,7 @@ fun getArtifact(groupId: String, artifactId: String, version: String): Artifact?
  * Finds the host repository of the artifact and initialises it.
  * Returns null if no repository hosts this artifact
  */
-fun initHost(artifact: Artifact): Artifact? {
+suspend fun initHost(artifact: Artifact): Artifact? {
     if (artifact.repository != null) {
         return artifact // Already initialized or repository was set externally
     }
@@ -85,7 +81,7 @@ fun initHost(artifact: Artifact): Artifact? {
             return artifact
         }
     }
-    eventReciever.onArtifactNotFound(artifact)
+    eventReceiver.onArtifactNotFound(artifact)
     return null
 }
 
@@ -103,7 +99,7 @@ suspend fun ProjectObjectModel.resolveDependencies(
         val invalidScope = it.scope == "test" || it.scope == "provided" || it.optional
         if (invalidScope) {
             val depGroupId = it.groupId ?: groupId ?: parent?.groupId ?: "unknown.groupId"
-            eventReciever.onInvalidScope(Artifact(depGroupId, it.artifactId, it.version ?: ""), it.scope ?: "Optional")
+            eventReceiver.onInvalidScope(Artifact(depGroupId, it.artifactId, it.version ?: ""), it.scope ?: "Optional")
         }
         return@filterNot invalidScope
     }.parallelForEach { dependency ->
@@ -117,14 +113,14 @@ suspend fun ProjectObjectModel.resolveDependencies(
         val originalArtifactIdForEvent = this.artifactId
         val originalVersionForEvent = this.version ?: parent?.version ?: "unknown.parent.version"
 
-        eventReciever.onResolving(Artifact(originalGroupIdForEvent, originalArtifactIdForEvent, originalVersionForEvent), artifact)
+        eventReceiver.onResolving(Artifact(originalGroupIdForEvent, originalArtifactIdForEvent, originalVersionForEvent), artifact)
 
         // Initialize host repository for the artifact
         // This is crucial before version fixing or POM fetching
         initHost(artifact)
 
-        if (artifact.repository == null && !needsVersionFix(artifact.version)) { // If repo is null and version doesn\'t need fixing, it's genuinely not found
-            eventReciever.onArtifactNotFound(artifact)
+        if (artifact.repository == null && !needsVersionFix(artifact.version)) { // If repo is null and version doesn't need fixing, it's genuinely not found
+            eventReceiver.onArtifactNotFound(artifact)
             return@parallelForEach
         }
 
@@ -138,16 +134,16 @@ suspend fun ProjectObjectModel.resolveDependencies(
 
         // If, after version fixing, the repository is still null, then artifact is not found
         if (artifact.repository == null) {
-            eventReciever.onArtifactNotFound(artifact)
+            eventReceiver.onArtifactNotFound(artifact)
             return@parallelForEach
         }
 
-        eventReciever.artifactFound(artifact)
+        eventReceiver.artifactFound(artifact)
 
         // Apply managed dependencies
         managedDependencies.find { it.groupId == artifact.groupId && it.artifactId == artifact.artifactId }?.let { managedDep ->
             if (artifact.version != managedDep.version) { // Apply only if version is different
-                eventReciever.logger.warning("Using managed dependency ${managedDep.groupId}:${managedDep.artifactId}:${managedDep.version} for ${artifact.groupId}:${artifact.artifactId} (was ${artifact.version})")
+                eventReceiver.logger.warning("Using managed dependency ${managedDep.groupId}:${managedDep.artifactId}:${managedDep.version} for ${artifact.groupId}:${artifact.artifactId} (was ${artifact.version})")
                 artifact.version = managedDep.version
                 // If managed version itself needs fixing (e.g. it was a property now resolved to '+'), or if repo might change
                 initHost(artifact) // Re-init host for the new (managed) version.
@@ -163,7 +159,7 @@ suspend fun ProjectObjectModel.resolveDependencies(
         artifact.extension = if (pom?.packaging != null && pom.packaging != "bundle") pom.packaging else "jar"
 
         deps.add(artifact)
-        eventReciever.onResolutionComplete(artifact)
+        eventReceiver.onResolutionComplete(artifact)
     }
     return deps
 }
@@ -186,20 +182,20 @@ private fun fixVersion(
     if ((artifact.version.isEmpty() || artifact.version == "+" || artifact.version.startsWith("[")) && artifact.mavenMetadata == null && artifact.repository != null) {
         // Attempt to load metadata if it wasn't loaded by initHost or a previous checkExists
         if (artifact.repository?.checkExists(artifact) == false) {
-            eventReciever.logger.warning("Could not load metadata for ${artifact.groupId}:${artifact.artifactId} to fix version \'${artifact.version}\'.")
+            eventReceiver.logger.warning("Could not load metadata for ${artifact.groupId}:${artifact.artifactId} to fix version '${artifact.version}'.")
             // Depending on the version type, we might still proceed or return
             if (artifact.version.isEmpty() || artifact.version == "+") return // Cannot fix '+' or empty without metadata
         }
     }
 
     if (artifact.version.isEmpty() || artifact.version == "+") {
-        eventReciever.onFetchingLatestVersion(artifact)
+        eventReceiver.onFetchingLatestVersion(artifact)
         val latestFromMeta = artifact.mavenMetadata?.versioning?.let { it.release ?: it.latest ?: it.versions.lastOrNull() }
         artifact.version = latestFromMeta ?: artifact.version.substringBefore("+") // Fallback
         if (latestFromMeta == null) {
-            eventReciever.logger.warning("Could not determine latest version for ${artifact.groupId}:${artifact.artifactId} from metadata. Using derived or existing: \'${artifact.version}\'.")
+            eventReceiver.logger.warning("Could not determine latest version for ${artifact.groupId}:${artifact.artifactId} from metadata. Using derived or existing: '${artifact.version}'.")
         }
-        eventReciever.onFetchedLatestVersion(artifact, artifact.version)
+        eventReceiver.onFetchedLatestVersion(artifact, artifact.version)
     } else if (artifact.version.startsWith("[")) {
         // getLatestRangeVersion itself might need to be suspend if it loads metadata,
         // but it currently relies on artifact.mavenMetadata being pre-populated.
@@ -236,9 +232,9 @@ private fun fixVersion(
 
         // If version resolved to another property or needs further fixing
         if (needsVersionFix(artifact.version) || artifact.version.startsWith("\${'$'}{")) {
-            eventReciever.logger.warning("Version for ${artifact.groupId}:${artifact.artifactId} resolved from property \'${'$'}{${propertyName}}\' to \'${artifact.version}\'. Re-evaluating.")
+            eventReceiver.logger.warning("Version for ${artifact.groupId}:${artifact.artifactId} resolved from property '${'$'}{${propertyName}}' to '${artifact.version}'. Re-evaluating.")
             if (artifact.version.startsWith("\${'$'}{") && artifact.version.substring(2, artifact.version.length - 1) == propertyName) {
-                eventReciever.logger.severe("Circular or unresolvable property ${artifact.version} for ${artifact.groupId}:${artifact.artifactId}")
+                eventReceiver.logger.severe("Circular or unresolvable property ${artifact.version} for ${artifact.groupId}:${artifact.artifactId}")
                 artifact.version = "" // Mark as unresolvable
             } else {
                 // Recursively call fixVersion for the new value, using the original artifact's POM context
@@ -264,7 +260,7 @@ fun getLatestRangeVersion(
     if (artifact.mavenMetadata == null) {
         initHost(artifact) // Attempt to load repo and metadata
         if (artifact.mavenMetadata == null) { // If still null
-            eventReciever.logger.warning("Cannot determine latest range version for ${artifact.groupId}:${artifact.artifactId} (\'${versionRange}\') as maven metadata is missing.")
+            eventReceiver.logger.warning("Cannot determine latest range version for ${artifact.groupId}:${artifact.artifactId} ('${versionRange}') as maven metadata is missing.")
             // Fallback: try to extract a concrete version from the range, e.g., the lower bound if specified, or just return original.
             return versionRange.substringBefore(",").trimStart('[').trimEnd(']').ifEmpty { versionRange }
         }
@@ -285,7 +281,7 @@ fun getLatestRangeVersion(
     val startInclusive = actualRange.startsWith("[")
     val endInclusive = actualRange.endsWith("]")
 
-    eventReciever.onFetchingLatestVersion(artifact) // For the range
+    eventReceiver.onFetchingLatestVersion(artifact) // For the range
 
     var bestVersion: String? = null
     // Iterate versions from metadata, assuming they are somewhat ordered, but explicitly compare.
@@ -314,12 +310,12 @@ fun getLatestRangeVersion(
     }
 
     if (bestVersion != null) {
-        eventReciever.onFetchedLatestVersion(artifact, bestVersion)
+        eventReceiver.onFetchedLatestVersion(artifact, bestVersion)
         return bestVersion
     }
 
     // Fallback if no version in range from metadata.
-    eventReciever.logger.warning("No version found in metadata for range \'${actualRange}\' for ${artifact.groupId}:${artifact.artifactId}. Fallback might be used.")
+    eventReceiver.logger.warning("No version found in metadata for range '${actualRange}' for ${artifact.groupId}:${artifact.artifactId}. Fallback might be used.")
     // Fallback to a version from 'resolved' if it fits the range, or a default part of the range.
     val resolvedVersionFromCache = resolved[Pair(artifact.groupId, artifact.artifactId)]?.first?.version
     if (resolvedVersionFromCache != null) {
@@ -379,8 +375,4 @@ fun getNewerVersion(existing: String, new: String): String {
  *
  * @param action The action to run on each element.
  */
-suspend fun <T> Iterable<T>.parallelForEach(action: suspend (T) -> Unit) = coroutineScope {
-    map { element ->
-        async { action(element) }
-    }.awaitAll()
-}
+suspend fun <T> Iterable<T>.parallelForEach(action
