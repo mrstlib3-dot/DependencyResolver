@@ -318,6 +318,5 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.0.0-alpha.16")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.19.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.19.0")
-    implementation("com.google.code.gson:gson:2.13.1")
     
 }
